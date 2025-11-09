@@ -1,18 +1,30 @@
-FROM mcr.microsoft.com/dotnet/core/sdk:2.2 AS build-env
-WORKDIR /app
+# ---------- Build stage ----------
+FROM mcr.microsoft.com/dotnet/core/sdk:2.2 AS build
+WORKDIR /src
 
-# Copy csproj and restore as distinct layers
-COPY *.csproj ./
-RUN dotnet restore
+# Nur die Projektdatei zuerst kopieren und restore ausführen (schont den Cache)
+COPY src.csproj ./
+RUN dotnet restore src.csproj
 
-# Copy everything else and build
+# Jetzt den Rest des Quellcodes kopieren
 COPY . ./
-COPY values.txt ./
-RUN dotnet publish -c Release -o out
+# (Optional) falls values.txt nicht im Projekt eingebunden ist, ist die COPY oben ausreichend
 
-# Build runtime image
+# Konkretes Projekt publishen
+RUN dotnet publish src.csproj -c Release -o /out
+
+# ---------- Runtime stage ----------
 FROM mcr.microsoft.com/dotnet/core/aspnet:2.2
 WORKDIR /app
-COPY --from=build-env /app/out .
-COPY values.txt .
+
+# Der 2.2-Container hört standardmäßig nicht zwingend auf :80; sicherheitshalber setzen:
+ENV ASPNETCORE_URLS=http://+:80
+EXPOSE 80
+
+# Build-Output aus dem ersten Stage übernehmen
+COPY --from=build /out ./
+
+# (Nur falls du values.txt im Container brauchst und sie nicht schon im Publish-Output liegt)
+COPY values.txt ./
+
 ENTRYPOINT ["dotnet", "src.dll"]
